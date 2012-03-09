@@ -15,8 +15,11 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 */
 
-var sys = require("sys");
+var sys = require("util");
 var sqlite = require("./sqlite3_bindings");
+
+var EventEmitter = require('events').EventEmitter;
+sqlite.Database.prototype.__proto__ =  EventEmitter.prototype;
 
 var Database = exports.Database = function () {
   var self = this;

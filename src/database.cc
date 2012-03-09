@@ -17,7 +17,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <string.h>
 #include <v8.h>
 #include <node.h>
-#include <node_events.h>
+#include <node_object_wrap.h>
 
 #include "sqlite3_bindings.h"
 #include "database.h"
@@ -26,13 +26,15 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 using namespace v8;
 using namespace node;
 
+static Persistent<String> emit_symbol;
+
 void Database::Init(v8::Handle<Object> target) {
   HandleScope scope;
 
   Local<FunctionTemplate> t = FunctionTemplate::New(New);
 
   constructor_template = Persistent<FunctionTemplate>::New(t);
-  constructor_template->Inherit(EventEmitter::constructor_template);
+//  constructor_template->Inherit(EventEmitter::constructor_template);
   constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
   constructor_template->SetClassName(String::NewSymbol("Database"));
 
@@ -48,6 +50,8 @@ void Database::Init(v8::Handle<Object> target) {
   NODE_DEFINE_CONSTANT (target, EXEC_EMPTY);
   NODE_DEFINE_CONSTANT (target, EXEC_LAST_INSERT_ID);
   NODE_DEFINE_CONSTANT (target, EXEC_AFFECTED_ROWS);
+
+  emit_symbol = NODE_PSYMBOL("emit");
 
   Statement::Init(target);
 }
@@ -80,7 +84,15 @@ int Database::EIO_AfterOpen(eio_req *req) {
     FatalException(try_catch);
   }
 
-  open_req->dbo->Emit(String::New("ready"), 0, NULL);
+//  open_req->dbo->Emit(String::New("ready"), 0, NULL);
+
+Local<Value> emitArgs[1];
+emitArgs[0] = String::New("ready");
+
+Local<Value> emit_v = open_req->dbo->handle_->Get(emit_symbol);
+Local<Function> emit = Local<Function>::Cast(emit_v);
+emit->Call(open_req->dbo->handle_, 1, emitArgs); 
+
   open_req->cb.Dispose();
 
   free(open_req);
@@ -88,7 +100,7 @@ int Database::EIO_AfterOpen(eio_req *req) {
   return 0;
 }
 
-int Database::EIO_Open(eio_req *req) {
+void Database::EIO_Open(eio_req *req) {
   struct open_request *open_req = (struct open_request *)(req->data);
 
   sqlite3 **dbptr = open_req->dbo->GetDBPtr();
@@ -110,7 +122,7 @@ int Database::EIO_Open(eio_req *req) {
 //   sqlite3_rollback_hook(db, RollbackHook, open_req->dbo);
 //   sqlite3_update_hook(db, UpdateHook, open_req->dbo);
 
-  return 0;
+//  return 0;
 }
 
 Handle<Value> Database::Open(const Arguments& args) {
@@ -172,12 +184,11 @@ int Database::EIO_AfterClose(eio_req *req) {
   return 0;
 }
 
-int Database::EIO_Close(eio_req *req) {
+void Database::EIO_Close(eio_req *req) {
   struct close_request *close_req = (struct close_request *)(req->data);
   Database* dbo = close_req->dbo;
   req->result = sqlite3_close(dbo->db_);
   dbo->db_ = NULL;
-  return 0;
 }
 
 Handle<Value> Database::Close(const Arguments& args) {
@@ -303,7 +314,7 @@ int Database::EIO_AfterPrepareAndStep(eio_req *req) {
   return 0;
 }
 
-int Database::EIO_PrepareAndStep(eio_req *req) {
+void Database::EIO_PrepareAndStep(eio_req *req) {
   struct prepare_request *prep_req = (struct prepare_request *)(req->data);
 
   prep_req->stmt = NULL;
@@ -340,8 +351,6 @@ int Database::EIO_PrepareAndStep(eio_req *req) {
       prep_req->lastInsertId = sqlite3_last_insert_rowid(db);
   if (prep_req->mode & EXEC_AFFECTED_ROWS)
       prep_req->affectedRows = sqlite3_changes(db);
-
-  return 0;
 }
 
 Handle<Value> Database::PrepareAndStep(const Arguments& args) {
@@ -419,7 +428,8 @@ int Database::EIO_AfterPrepare(eio_req *req) {
 
   return 0;
 }
-int Database::EIO_Prepare(eio_req *req) {
+
+void Database::EIO_Prepare(eio_req *req) {
   struct prepare_request *prep_req = (struct prepare_request *)(req->data);
 
   prep_req->stmt = NULL;
@@ -439,8 +449,6 @@ int Database::EIO_Prepare(eio_req *req) {
       prep_req->lastInsertId = sqlite3_last_insert_rowid(db);
   if (prep_req->mode & EXEC_AFFECTED_ROWS)
       prep_req->affectedRows = sqlite3_changes(db);
-
-  return 0;
 }
 
 // Statement#prepare(sql, [ options ,] callback);
